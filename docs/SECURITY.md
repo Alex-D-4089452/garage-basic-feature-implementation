@@ -237,6 +237,14 @@ Document this as a per-client hardening step in the forking guide.
 
 `pnpm audit --audit-level=high` runs on every PR in CI (`security` job in `ci.yml`). The job fails on any high or critical CVE, blocking the merge.
 
+All high/critical advisories are addressed:
+
+- **Direct dependencies** run patched versions — Next.js 16.4.2+ and Vitest 5 (which dropped the vulnerable `tinypool` dependency).
+- **Transitive dependencies** are pinned to patched versions with `overrides:` in `pnpm-workspace.yaml`; each entry names its advisory.
+- `braces` (GHSA-vfj7-8cjw-p6xm) has **no patched release yet** (upstream `micromatch/braces#70`). It is lint-time only, so it is listed under `audit.ignore` in `pnpm-workspace.yaml` — remove the entry once upstream ships a fix.
+
+Moderate/low advisories remain in dev/build chains (below the CI failure threshold).
+
 ```bash
 # Run locally
 pnpm audit --audit-level=high
