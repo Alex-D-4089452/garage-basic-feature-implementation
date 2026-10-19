@@ -129,24 +129,20 @@ pnpm run validate         # Check for unreplaced template placeholders
 
 Security is enforced in independent layers — Claude Code guard hooks, HTTP hardening (helmet/CORS/rate limits), token + session-cookie auth, Zod input validation, default-deny Firestore rules, and CI scanning (`pnpm audit`). See [docs/SECURITY.md](docs/SECURITY.md).
 
-### Known `pnpm audit` findings (manual fix)
+### `pnpm audit` status
 
+CI fails on any **high** or **critical** advisory (`pnpm audit --audit-level=high` in `.github/workflows/ci.yml`). All actionable ones are fixed:
 
-`pnpm audit` currently flags two high-severity CVEs — both transitive, dev/build-time only, not runtime-reachable:
+- **Direct dependencies** run patched versions — Next.js `16.4.2` (RCE / image-optimization / SSRF advisories) and Vitest `5` (the vulnerable `tinypool` dependency no longer exists upstream).
+- **Transitive dependencies** are forced to patched versions via `overrides:` in `pnpm-workspace.yaml`. Each override names the advisory it addresses — remove an entry once its direct dependency adopts the patched version on its own.
 
-| Package | Issue | Pulled in by |
-|---------|-------|--------------|
-| `js-yaml` | CVE-2026-59870 — quadratic CPU DoS on `!!omap` resolution | eslint's dependency chain (lint-time only) |
-| `nanoid` | Infinite loop when a custom generator's `size` is 0 | postcss, used by Tailwind/Next/Vitest builds (build-time only) |
+One advisory is deliberately ignored because upstream has not published a fix:
 
-To patch: add these two lines under `overrides:` in `pnpm-workspace.yaml`, then run `pnpm install`:
+| Package | Issue | Why it is tolerated |
+|---------|-------|---------------------|
+| `braces` | GHSA-vfj7-8cjw-p6xm — stack exhaustion from deeply nested patterns | No patched release exists (upstream `micromatch/braces#70`). Reachable only through `eslint-config-next` at lint time — never shipped or runtime-reachable. Listed under `audit.ignore` in `pnpm-workspace.yaml`; remove the entry once `braces` ships a fix. |
 
-```yaml
-  js-yaml: '^4.3.1'
-  nanoid: '^3.3.17'
-```
-
-Confirm with `pnpm audit` — should show 0 high/critical findings.
+Moderate/low advisories remain in lint/build/test chains — below the CI failure threshold. Re-check locally with `pnpm audit`; auto-fix where safe with `pnpm audit --fix`.
 
 ## Git Workflow
 
