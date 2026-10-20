@@ -26,15 +26,68 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json" >> $GITHUB_ENV
 
       - name: Deploy Firestore rules
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
-          mkdir -p ~/.config/configstore
-          cat > ~/.config/configstore/firebase-tools.json <<EOF
-          {"apiEnablementCache":{"${{ secrets.FIREBASE_PROJECT_ID }}":{"firestore.googleapis.com":true}}}
-          EOF
-          npx firebase-tools@15.0.0 deploy \
-            --only firestore:rules \
-            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
-            --non-interactive
+          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          export ACCESS_TOKEN
+
+          python <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib import request
+
+          project_id = os.environ["FIREBASE_PROJECT_ID"]
+          access_token = os.environ["ACCESS_TOKEN"]
+          rules_source = Path("firebase/firestore.rules").read_text(encoding="utf-8")
+
+          headers = {
+              "Authorization": "Bearer " + access_token,
+              "Content-Type": "application/json; charset=utf-8",
+          }
+
+          def call(method: str, url: str, payload: dict) -> dict:
+              req = request.Request(
+                  url=url,
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers=headers,
+                  method=method,
+              )
+              with request.urlopen(req) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          ruleset = call(
+              method="POST",
+              url=f"https://firebaserules.googleapis.com/v1/projects/{project_id}/rulesets",
+              payload={
+                  "source": {
+                      "files": [
+                          {
+                              "name": "firestore.rules",
+                              "content": rules_source,
+                          }
+                      ]
+                  }
+              },
+          )
+
+          ruleset_name = ruleset["name"]
+          release = call(
+              method="PATCH",
+              url=(
+                  "https://firebaserules.googleapis.com/v1/"
+                  f"projects/{project_id}/releases/cloud.firestore?updateMask=rulesetName"
+              ),
+              payload={
+                  "name": f"projects/{project_id}/releases/cloud.firestore",
+                  "rulesetName": ruleset_name,
+              },
+          )
+
+          print(f"Released {ruleset_name} to {release['name']}")
+          PY
 
   # Optional — only needed if this project actually uses backend/ (the Express
   # API). Cloud Functions v2 requires the Blaze (pay-as-you-go) plan, so this
