@@ -58,8 +58,12 @@ service cloud.firestore {
 
     // notes/{noteId}
     // Users can only read and write their own notes.
+    // Soft-deleted notes stay readable by their owner: Firestore cannot query
+    // for documents where a field is missing, so a `notDeleted()` read rule
+    // would fail the whole live list query as soon as one note is deleted.
+    // The UI filters notes with a non-null `deletedAt` out of the list.
     match /notes/{noteId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.uid) && notDeleted();
+      allow read: if isAuthenticated() && isOwner(resource.data.uid);
 
       allow create: if isAuthenticated() && isOwner(request.resource.data.uid)
         && request.resource.data.keys().hasAll(['uid', 'title', 'body', 'createdAt', 'updatedAt', '_schemaVersion'])

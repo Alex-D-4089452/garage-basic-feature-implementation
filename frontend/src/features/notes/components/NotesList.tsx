@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { getNotesCollection } from '@/lib/firebase/firestore'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { NoteItem } from '@/features/notes/components/NoteItem'
 
 export function NotesList() {
   const { user } = useAuth()
@@ -15,15 +16,18 @@ export function NotesList() {
   )
 
   if (loading) return <LoadingSpinner />
-  if (notes.length === 0) return <EmptyState title="No notes yet" />
+
+  // Firestore cannot query for documents where a field is missing, and notes
+  // created before soft-delete existed do not have `deletedAt`. Filter
+  // client-side so both old and soft-deleted notes behave correctly.
+  const activeNotes = notes.filter((note) => note.deletedAt == null)
+
+  if (activeNotes.length === 0) return <EmptyState title="No notes yet" />
 
   return (
     <ul className="space-y-2">
-      {notes.map((note) => (
-        <li key={note.id} className="rounded-lg border p-4">
-          <h3 className="font-medium">{note.title}</h3>
-          <p className="text-sm text-zinc-500">{note.body}</p>
-        </li>
+      {activeNotes.map((note) => (
+        <NoteItem key={note.id} note={note} />
       ))}
     </ul>
   )

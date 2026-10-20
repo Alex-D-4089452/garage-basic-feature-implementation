@@ -29,5 +29,7 @@ export interface Note {
   body: string
   createdAt: Timestamp
   updatedAt: Timestamp
+  /** Set when the note is soft-deleted. Absent or null means active. */
+  deletedAt?: Timestamp | null
   _schemaVersion: 1
 }
