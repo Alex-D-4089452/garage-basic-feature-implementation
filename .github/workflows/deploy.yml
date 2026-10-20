@@ -27,6 +27,10 @@ jobs:
 
       - name: Deploy Firestore rules
         run: |
+          mkdir -p ~/.config/configstore
+          cat > ~/.config/configstore/firebase-tools.json <<EOF
+          {"apiEnablementCache":{"${{ secrets.FIREBASE_PROJECT_ID }}":{"firestore.googleapis.com":true}}}
+          EOF
           npx firebase-tools@15.0.0 deploy \
             --only firestore:rules \
             --project ${{ secrets.FIREBASE_PROJECT_ID }} \
