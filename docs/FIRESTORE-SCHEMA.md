@@ -56,7 +56,10 @@ This enables **lazy migration** — when a document is read, check `_schemaVersi
 | `body` | `string` | Yes | Note body (≤10 000 chars) |
 | `createdAt` | `Timestamp` | Yes | Creation time |
 | `updatedAt` | `Timestamp` | Yes | Last update time |
+| `deletedAt` | `Timestamp \| null` | No | Soft-delete marker — absent/null means active |
 | `_schemaVersion` | `1` | Yes | Schema version for lazy migration |
+
+**Deletion:** Hard-delete is disabled in security rules. `deleteNote` sets `deletedAt`, and `NotesList` filters soft-deleted notes out of the live query. Soft-deleted notes remain readable by their owner because Firestore cannot query for documents where a field is absent; a `notDeleted()` read rule would fail the whole list query once a note is deleted.
 
 ---
 
