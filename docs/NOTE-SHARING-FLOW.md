@@ -15,73 +15,75 @@
 ## 1. UI state flow
 
 ```mermaid
-flowchart TD
+flowchart LR
     classDef loading fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
     classDef empty fill:#f3f4f6,stroke:#6b7280,color:#374151
     classDef error fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
     classDef success fill:#dcfce7,stroke:#16a34a,color:#14532d
-    classDef action fill:#fef9c3,stroke:#ca8a04,color:#713f12
 
-    subgraph OWNER[Owner - Share dialog]
-        O1["Notes page"] --> O2["Open Share dialog"]
-        O2 --> O3{"Load collaborators"}
-        O3 -->|loading| OL["Loading collaborators"]:::loading
-        O3 -->|error| OE["Error: could not load collaborators"]:::error
-        O3 -->|empty| OEm["Empty: no collaborators yet"]:::empty
-        O3 -->|success| OS["Collaborator list"]:::success
+    subgraph SHARE[Owner - Share note]
+        direction TB
+        O1["Share dialog"] --> O2{"Load collaborators"}
+        O2 -->|loading| OL["Loading"]:::loading
+        O2 -->|error| OE["Error: load failed"]:::error
+        O2 -->|empty| O4["Enter recipient email"]
+        O2 -->|success| OS["Collaborator list"]:::success
 
-        OL --> O3
-        OE -->|Retry| O3
+        OL --> O2
+        OE -->|Retry| O2
 
-        OEm --> O4["Enter recipient email"]
         OS --> O4
-        O4 --> O5["Submit Share"]:::action
-
-        O5 --> OA["Sharing: button disabled"]:::loading
-        OA --> O6{"Share result"}
-        O6 -->|success| OSucc["Success: collaborator added, input cleared"]:::success
-        O6 -->|error| OErr["Error: not found, self-share, duplicate, cap, or write failed"]:::error
-
+        O4 --> O5["Sharing: input disabled"]:::loading
+        O5 --> O6{"Share result"}
+        O6 -->|success| OSucc["Success: added, list refreshed"]:::success
+        O6 -->|error| OErr["Error: not found / self / duplicate / cap / write"]:::error
         OErr --> O4
-        OSucc --> OS
+    end
 
-        OS --> O7["Remove collaborator"]:::action
-        O7 --> O7c{"Confirm removal?"}
-        O7c -->|cancel| OS
-        O7c -->|confirm| OR["Revoking: row disabled"]:::loading
+    subgraph MANAGE[Owner - Access list]
+        direction TB
+        OM["Collaborator list"]:::success
+        OM --> O7{"Remove collaborator?"}
+        O7 -->|cancel| OM
+        O7 -->|confirm| OR["Revoking: row disabled"]:::loading
         OR --> O8{"Revoke result"}
-        O8 -->|success| ORS["Success: collaborator removed"]:::success
-        O8 -->|error| ORE["Error: still shared, retry"]:::error
-
-        ORE --> OS
-        ORS --> OS
+        O8 -->|success| ORS["Access removed"]:::success
+        O8 -->|error| ORE["Error: still shared"]:::error
+        ORE -->|Retry| O7
+        ORS -->|sync| LR["Live: note disappears"]:::error
+        LA["Live: note appears"]:::success
     end
 
     subgraph RECIPIENT[Recipient - Shared with me]
-        R1["Open Shared with me tab"] --> R2{"Load shared notes"}
-        R2 -->|loading| RL["Loading shared notes"]:::loading
-        R2 -->|error| RE["Error: could not load shared notes"]:::error
-        R2 -->|empty| REm["Empty: nothing shared with you yet"]:::empty
-        R2 -->|success| RS["Read-only shared note list"]:::success
+        direction TB
+        R1["Shared with me"] --> R2{"Load shared notes"}
+        R2 -->|loading| RL["Loading"]:::loading
+        R2 -->|error| RE["Error: load failed"]:::error
+        R2 -->|empty| REm["Nothing shared yet"]:::empty
+        R2 -->|success| RS["Read-only note list"]:::success
 
         RL --> R2
         RE -->|Retry| R2
         RS --> R3["Open note"]
-        R3 --> R4["Read-only note view: title, body, owner"]
-        RS -.->|live update| R2
+        R3 --> R3L["Loading note"]:::loading --> R4["Read-only view"]
+        R3 -.->|fetch error| R3E["Error: not found / no access"]:::error --> R2
+        R4 --> R4a["Owner, updated, no edit controls"] --> R5["Back to list"] --> R2
+        R4 -.->|owner revokes| R6["Access removed alert"]:::error --> R6b["Return to list"] --> R2
+        R4 -.->|owner deletes| R7["Note unavailable alert"]:::error --> R7b["Return to list"] --> R2
+        R4 -.->|session expires| R12["Redirect to sign in"]:::error
+        R2 -.->|session expires| R12
     end
 
-    OSucc -.->|new shared note appears| R2
-    ORS -.->|revoked note disappears| R2
-    OD["Owner soft-deletes note"] -.->|shares revoked| R2
-
-    subgraph LEGEND[Legend]
-        L1["Loading"]:::loading
-        L2["Empty"]:::empty
-        L3["Error"]:::error
-        L4["Success"]:::success
-    end
+    OS -.->|manage| OM
+    OSucc -.->|new note| LA
+    LA -.->|live update| R2
+    LR -.->|live update| R2
 ```
+
+**Legend:** blue = loading, gray = empty, red = error, green = success.
+
+The diagram shows the primary tab flow. Direct-link loading/error states and owner
+soft-delete cleanup are covered in the checklist and key transitions below.
 
 ---
 
