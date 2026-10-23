@@ -33,7 +33,10 @@ flowchart LR
         OE -->|Retry| O2
 
         OS --> O4
-        O4 --> O5["Sharing: input disabled"]:::loading
+        O4 --> O4v{"Validate email"}
+        O4v -->|invalid| O4e["Error: invalid email format"]:::error
+        O4e --> O4
+        O4v -->|valid| O5["Sharing: input disabled"]:::loading
         O5 --> O6{"Share result"}
         O6 -->|success| OSucc["Success: added, list refreshed"]:::success
         O6 -->|error| OErr["Error: not found / self / duplicate / cap / write"]:::error
