@@ -29,7 +29,25 @@ export interface Note {
   body: string
   createdAt: Timestamp
   updatedAt: Timestamp
+  /** UIDs of users this note is shared with (view-only). Used for array-contains queries. */
+  sharedWithUids?: string[]
   /** Set when the note is soft-deleted. Absent or null means active. */
   deletedAt?: Timestamp | null
   _schemaVersion: 1
 }
+
+export interface NoteShare {
+  id: string // deterministic: `${noteId}_${recipientUid}`
+  noteId: string
+  ownerUid: string
+  recipientUid: string
+  recipientEmail: string
+  ownerDisplayName: string | null
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  /** Set when share is revoked. Absent or null means active. */
+  revokedAt?: Timestamp | null
+  _schemaVersion: 1
+}
+
+export type CreateNoteShareInput = Omit<NoteShare, 'id' | 'createdAt' | 'updatedAt' | 'revokedAt'>
