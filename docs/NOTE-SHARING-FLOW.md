@@ -216,3 +216,124 @@ sequenceDiagram
 - [ ] Add the “Shared with me” tab and read-only shared note view.
 - [ ] Add action, component, and rules tests covering the error paths above.
 - [ ] Verify the two-account demo, including live share and revoke updates.
+
+---
+
+## 4. Architecture diagram
+
+```mermaid
+flowchart TB
+    classDef ui fill:#e0e7ff,stroke:#3730a3,color:#1e1b4b
+    classDef server fill:#fef3c7,stroke:#b45309,color:#78350f
+    classDef data fill:#dcfce7,stroke:#166534,color:#14532d
+    classDef auth fill:#fce7f3,stroke:#9d174d,color:#831843
+    classDef rules fill:#fef2f2,stroke:#991b1b,color:#7f1d1d
+    classDef live fill:#ede9fe,stroke:#5b21b6,color:#4c1d95
+
+    subgraph FRONTEND[Frontend - Next.js App Router]
+        direction TB
+        UI1["Share Dialog (Owner)"]:::ui
+        UI2["Shared with Me Tab (Recipient)"]:::ui
+        UI3["Read-only Note View (Recipient)"]:::ui
+        UI4["Notes List / My Notes (Owner)"]:::ui
+    end
+
+    subgraph BACKEND[Server Actions - Admin SDK]
+        direction TB
+        SA1["shareNote(noteId, email)"]:::server
+        SA2["unshareNote(noteId, recipientUid)"]:::server
+        SA3["deleteNote(noteId) + cleanup shares"]:::server
+    end
+
+    subgraph FIREBASE_AUTH[Firebase Auth Admin]
+        direction TB
+        AUTH["getUserByEmail(email) → recipientUid + displayName"]:::auth
+    end
+
+    subgraph FIRESTORE[Firestore - Collections & Rules]
+        direction TB
+        DB1[("notes/{noteId}\nownerUid, sharedWithUids[],\nupdatedAt, deletedAt")]:::data
+        DB2[("noteShares/{noteId}_{uid}\nownerUid, recipientUid,\nrecipientEmail, ownerDisplayName,\ncreatedAt, updatedAt, revokedAt")]:::data
+        DB3[("users/{uid}\ndisplayName, email")]:::data
+
+        RULE1["Security Rules:\n• notes: read if ownerUid==uid OR uid in sharedWithUids\n• noteShares: read if ownerUid==uid OR recipientUid==uid, write denied\n• users: read own only"]:::rules
+    end
+
+    subgraph LIVE[Live Updates - onSnapshot]
+        direction TB
+        SUB1["Owner: noteShares where ownerUid==me"]:::live
+        SUB2["Recipient: notes where\nsharedWithUids array-contains uid"]:::live
+    end
+
+    %% Owner flows
+    UI1 -->|1. Open dialog| SUB1
+    SUB1 -.->|live collaborator list| UI1
+
+    UI1 -->|2. Enter email, click Share| SA1
+    SA1 -->|validate email format| SA1
+    SA1 -->|requireAuth, read note| DB1
+    SA1 -->|getUserByEmail| AUTH
+    AUTH -->|recipientUid + displayName| SA1
+    SA1 -->|Transaction: arrayUnion sharedWithUids + upsert noteShare| DB1
+    SA1 -->|Transaction: create/update noteShare| DB2
+    SA1 -.->|success| UI1
+
+    %% Recipient live update on share
+    DB1 -.->|onSnapshot: new note in sharedWithUids| SUB2
+    SUB2 -.->|live shared note appears| UI2
+
+    %% Manage access
+    UI1 -->|3. Remove collaborator| SA2
+    SA2 -->|requireAuth, verify owner| DB1
+    SA2 -->|arrayRemove sharedWithUids + set revokedAt on noteShare| DB1
+    SA2 -->|update noteShare revokedAt| DB2
+    SA2 -.->|success| UI1
+
+    %% Recipient live update on revoke
+    DB1 -.->|onSnapshot: note removed from sharedWithUids| SUB2
+    SUB2 -.->|live shared note disappears| UI2
+
+    %% Recipient view
+    UI2 -->|4. Open tab| SUB2
+    SUB2 -.->|live note list| UI2
+    UI2 -->|5. Click note| UI3
+    UI3 -->|read note by ID| DB1
+    DB1 -->|note data| UI3
+
+    %% Soft delete with cleanup
+    UI4 -->|6. Delete note| SA3
+    SA3 -->|requireAuth, verify owner| DB1
+    SA3 -->|set deletedAt, clear sharedWithUids| DB1
+    SA3 -->|set revokedAt on all active noteShares| DB2
+    SA3 -.->|success| UI4
+
+    %% Rules enforcement on all reads/writes
+    DB1 -.->|reads/writes checked against| RULE1
+    DB2 -.->|reads/writes checked against| RULE1
+    DB3 -.->|reads checked against| RULE1
+
+    %% Styling
+    style FRONTEND fill:#f5f3ff,stroke:#7c3aed
+    style BACKEND fill:#fffbeb,stroke:#d97706
+    style FIREBASE_AUTH fill:#fdf2f8,stroke:#db2777
+    style FIRESTORE fill:#f0fdf4,stroke:#22c55e
+    style LIVE fill:#faf5ff,stroke:#a855f7
+```
+
+**Data flow summary:**
+
+| Flow              | Path                                                              | Collections touched                                                               | Auth/Rules                                            |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Share             | Owner UI → `shareNote` → `getUserByEmail` → Firestore transaction | `notes` (update `sharedWithUids`), `noteShares` (upsert)                          | Admin SDK bypasses rules; ownership checked in action |
+| Revoke            | Owner UI → `unshareNote` → Firestore writes                       | `notes` (remove from `sharedWithUids`), `noteShares` (set `revokedAt`)            | Admin SDK; ownership checked in action                |
+| Recipient list    | `onSnapshot` on `notes` where `sharedWithUids` array-contains uid | `notes` (read)                                                                    | Rules: `uid in sharedWithUids`                        |
+| Collaborator list | `onSnapshot` on `noteShares` where `ownerUid == me`               | `noteShares` (read)                                                               | Rules: `ownerUid == uid`                              |
+| Read shared note  | Recipient UI → direct read `notes/{noteId}`                       | `notes` (read)                                                                    | Rules: `uid in sharedWithUids`                        |
+| Soft delete       | Owner UI → `deleteNote` → cleanup                                 | `notes` (set `deletedAt`, clear `sharedWithUids`), `noteShares` (set `revokedAt`) | Admin SDK; ownership checked                          |
+
+**Key invariants enforced by rules:**
+
+- `noteShares` is **write-denied for clients** — only Server Actions (Admin SDK) can create/update.
+- `sharedWithUids` on a note is **only modified by Server Actions** — clients cannot tamper with the access list.
+- Recipients can **only read** notes they own or are shared with; no write/delete.
+- `revokedAt` on a share document is the source of truth for revocation; rules deny reads where `revokedAt != null`.
