@@ -89,17 +89,43 @@ export async function deleteNote(noteId: unknown): Promise<ActionResult> {
     return { success: false, error: 'Invalid note id' }
   }
 
-  try {
-    const ref = await getActiveOwnedNote(parsed.data, session.uid)
-    if (!ref) {
-      return { success: false, error: 'Note not found' }
-    }
+  const noteRef = adminDb.collection('notes').doc(parsed.data)
+  const activeSharesQuery = adminDb
+    .collection('noteShares')
+    .where('noteId', '==', parsed.data)
+    .where('revokedAt', '==', null)
 
-    // Soft delete: security rules forbid hard deletes. The UI filters notes
-    // with a non-null `deletedAt` out of the list.
-    const now = Timestamp.now()
-    await ref.update({ deletedAt: now, updatedAt: now })
-    return { success: true }
+  try {
+    return await adminDb.runTransaction<ActionResult>(async (transaction) => {
+      const noteSnap = await transaction.get(noteRef)
+      if (!noteSnap.exists) {
+        return { success: false, error: 'Note not found' }
+      }
+
+      const note = noteSnap.data()
+      if (!note || note.uid !== session.uid || note.deletedAt != null) {
+        return { success: false, error: 'Note not found' }
+      }
+
+      const sharesSnap = await transaction.get(activeSharesQuery)
+      const now = Timestamp.now()
+
+      // Soft delete: security rules forbid hard deletes. The UI filters notes
+      // with a non-null `deletedAt` out of the list. Clearing `sharedWithUids`
+      // removes access for recipients immediately, and active share records are
+      // soft-revoked in the same transaction.
+      transaction.update(noteRef, {
+        deletedAt: now,
+        updatedAt: now,
+        sharedWithUids: [],
+      })
+
+      for (const share of sharesSnap.docs) {
+        transaction.update(share.ref, { revokedAt: now, updatedAt: now })
+      }
+
+      return { success: true }
+    })
   } catch {
     return { success: false, error: 'Failed to delete note' }
   }
