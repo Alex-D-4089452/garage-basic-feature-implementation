@@ -136,7 +136,7 @@ sequenceDiagram
             SA-->>UI: error: validation message
             UI-->>Owner: Error, keep input
         else recipient valid
-            SA->>FS: Transaction: arrayUnion on note and upsert noteShare
+            SA->>FS: Transaction: add recipient to note and upsert noteShare
             alt transaction fails
                 FS-->>SA: write error
                 SA-->>UI: error: Failed to share note
@@ -153,7 +153,7 @@ sequenceDiagram
 
     Owner->>UI: Remove collaborator
     UI->>SA: unshareNote(noteId, recipientUid)
-    SA->>FS: Verify ownership, then arrayRemove and soft-revoke share
+    SA->>FS: Verify ownership, then remove recipient and soft-revoke share
     alt revoke fails
         FS-->>SA: write error
         SA-->>UI: error: Failed to remove collaborator
@@ -209,12 +209,14 @@ sequenceDiagram
 
 ## Implementation checklist
 
-- [ ] Add `sharedWithUids?: string[]` and `NoteShare` to the Firestore types and schema docs.
-- [ ] Add `shareNote`, `unshareNote`, and share cleanup in `deleteNote` as Server Actions.
-- [ ] Update Firestore rules for owner-or-shared note reads and owner/recipient share reads.
-- [ ] Build the share dialog with loading, empty, error, and success states.
-- [ ] Add the “Shared with me” tab and read-only shared note view.
-- [ ] Add action, component, and rules tests covering the error paths above.
+- [x] Add `sharedWithUids?: string[]` and `NoteShare` to the Firestore types and schema docs.
+- [x] Add `shareNote`, `unshareNote`, and share cleanup in `deleteNote` as Server Actions.
+- [x] Update Firestore rules for owner-or-shared note reads and owner/recipient share reads.
+- [x] Add composite indexes for the active-share live queries.
+- [x] Build the share dialog with loading, empty, error, and success states.
+- [x] Add the "Shared with me" tab and read-only shared note view.
+- [x] Add action and component tests covering the error paths above.
+- [ ] Add Firestore rules unit tests (requires an emulator test harness).
 - [ ] Verify the two-account demo, including live share and revoke updates.
 
 ---
@@ -274,7 +276,7 @@ flowchart TB
     SA1 -->|requireAuth, read note| DB1
     SA1 -->|getUserByEmail| AUTH
     AUTH -->|recipientUid + displayName| SA1
-    SA1 -->|Transaction: arrayUnion sharedWithUids + upsert noteShare| DB1
+    SA1 -->|Transaction: add recipient to sharedWithUids + upsert noteShare| DB1
     SA1 -->|Transaction: create/update noteShare| DB2
     SA1 -.->|success| UI1
 
@@ -285,7 +287,7 @@ flowchart TB
     %% Manage access
     UI1 -->|3. Remove collaborator| SA2
     SA2 -->|requireAuth, verify owner| DB1
-    SA2 -->|arrayRemove sharedWithUids + set revokedAt on noteShare| DB1
+    SA2 -->|remove recipient from sharedWithUids + set revokedAt on noteShare| DB1
     SA2 -->|update noteShare revokedAt| DB2
     SA2 -.->|success| UI1
 
