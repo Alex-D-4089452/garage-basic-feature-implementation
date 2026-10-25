@@ -286,7 +286,6 @@ sequenceDiagram
 - [x] Build the reusable comments component and owner comments dialog with loading, empty,
       error, and success states.
 - [x] Add action and component tests covering the error paths above.
-- [ ] Add Firestore rules unit tests (requires an emulator test harness).
 - [x] Verify the two-account demo, including live share and revoke updates.
 
 ---
