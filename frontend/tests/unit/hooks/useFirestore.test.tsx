@@ -95,4 +95,19 @@ describe('useCollection', () => {
     expect(result.current.error?.message).toBe('permission-denied')
     expect(result.current.loading).toBe(false)
   })
+
+  it('replaces the listener when retry is called', () => {
+    const { result } = renderHook(({ uid }) => useTestCollection(uid), {
+      initialProps: { uid: 'user-1' },
+    })
+
+    expect(onSnapshot).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.retry()
+    })
+
+    expect(onSnapshot).toHaveBeenCalledTimes(2)
+    expect(listeners[0]!.unsubscribe).toHaveBeenCalledTimes(1)
+  })
 })

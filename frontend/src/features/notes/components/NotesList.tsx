@@ -6,16 +6,25 @@ import { useAuth } from '@/hooks/useAuth'
 import { getNotesCollection } from '@/lib/firebase/firestore'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorState } from '@/components/shared/ErrorState'
 import { NoteItem } from '@/features/notes/components/NoteItem'
 
 export function NotesList() {
   const { user } = useAuth()
-  const { data: notes, loading } = useCollection(
-    getNotesCollection(),
-    where('uid', '==', user?.uid ?? '')
-  )
+  const {
+    data: notes,
+    loading,
+    error,
+    retry,
+  } = useCollection(getNotesCollection(), where('uid', '==', user?.uid ?? ''))
 
   if (loading) return <LoadingSpinner />
+
+  if (error) {
+    return (
+      <ErrorState title="Couldn't load your notes" description={error.message} onRetry={retry} />
+    )
+  }
 
   // Firestore cannot query for documents where a field is missing, and notes
   // created before soft-delete existed do not have `deletedAt`. Filter
