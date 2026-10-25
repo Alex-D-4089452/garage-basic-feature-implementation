@@ -23,6 +23,8 @@ overrides:
   '@grpc/grpc-js': '^1.14.5'  # GHSA-m9gg-hp2v-232j — firebase-admin + firebase chains
   '@fastify/busboy': '^3.2.2' # GHSA-xjh9-v7x6-24jw, GHSA-x8mw-p69m-v3mx — firebase-admin chain
   source-map-js: '^1.2.2'     # GHSA-68fv-2mgg-jv7q — postcss/vite chains (build-time only)
+  body-parser: '^2.4.0'       # GHSA-27r3-jxmh-p828 — express 5.x chain (runtime)
+  'body-parser@1': '^1.20.9'  # GHSA-27r3-jxmh-p828 — express 4.x chain (runtime, firebase-functions)
   # brace-expansion is consumed in three incompatible majors — patch each line.
   'brace-expansion@1': '^1.1.21' # GHSA-6j4f-fj2g-mc7p
   'brace-expansion@2': '^2.1.7'  # GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7

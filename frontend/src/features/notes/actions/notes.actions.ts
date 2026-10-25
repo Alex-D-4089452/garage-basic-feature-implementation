@@ -41,7 +41,7 @@ export async function createNote(input: unknown): Promise<ActionResult<string>> 
 
   const parsed = createNoteSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   try {
@@ -64,7 +64,7 @@ export async function updateNote(input: unknown): Promise<ActionResult> {
 
   const parsed = updateNoteSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   try {

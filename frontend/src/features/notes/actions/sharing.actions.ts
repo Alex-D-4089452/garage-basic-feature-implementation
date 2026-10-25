@@ -57,7 +57,7 @@ export async function shareNote(
 
   const parsed = shareNoteSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { noteId, email } = parsed.data
@@ -152,7 +152,7 @@ export async function unshareNote(input: unknown): Promise<ActionResult> {
 
   const parsed = unshareNoteSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { noteId, recipientUid } = parsed.data
@@ -203,7 +203,7 @@ export async function setNoteReviewed(input: unknown): Promise<ActionResult> {
 
   const parsed = setNoteReviewedSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { noteId, reviewed } = parsed.data

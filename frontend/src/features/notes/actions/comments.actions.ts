@@ -34,7 +34,7 @@ export async function addNoteComment(input: unknown): Promise<ActionResult<strin
 
   const parsed = addNoteCommentSchema.safeParse(input)
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { noteId, body } = parsed.data
