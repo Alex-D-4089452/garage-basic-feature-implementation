@@ -57,23 +57,43 @@ service cloud.firestore {
     }
 
     // notes/{noteId}
-    // Users can only read and write their own notes.
-    // Soft-deleted notes stay readable by their owner: Firestore cannot query
-    // for documents where a field is missing, so a `notDeleted()` read rule
-    // would fail the whole live list query as soon as one note is deleted.
-    // The UI filters notes with a non-null `deletedAt` out of the list.
+    // Owners can read and write their own notes. Users listed in
+    // `sharedWithUids` get view-only read access. The owner keeps reading
+    // soft-deleted notes (the UI filters them) because Firestore cannot query
+    // for documents where a field is missing.
+    //
+    // `sharedWithUids` and `deletedAt` are only written by Server Actions
+    // (Admin SDK), which bypass these rules. Client updates are limited to the
+    // note content so a recipient cannot grant themselves access.
     match /notes/{noteId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.uid);
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.uid)
+        || ('sharedWithUids' in resource.data
+            && request.auth.uid in resource.data.sharedWithUids)
+      );
 
       allow create: if isAuthenticated() && isOwner(request.resource.data.uid)
         && request.resource.data.keys().hasAll(['uid', 'title', 'body', 'createdAt', 'updatedAt', '_schemaVersion'])
         && request.resource.data.keys().hasOnly(['uid', 'title', 'body', 'createdAt', 'updatedAt', '_schemaVersion']);
 
       allow update: if isAuthenticated() && isOwner(resource.data.uid)
+        && notDeleted()
         && request.resource.data.uid == resource.data.uid  // uid is immutable
-        && request.resource.data.keys().hasOnly(['uid', 'title', 'body', 'createdAt', 'updatedAt', 'deletedAt', '_schemaVersion']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'body', 'updatedAt']);
 
       allow delete: if false; // soft-delete only — set deletedAt instead
+    }
+
+    // noteShares/{noteId}_{recipientUid}
+    // Sharing audit records are readable by the note owner and the recipient.
+    // Revoked shares are not readable. Clients can never write these records —
+    // only Server Actions using the Admin SDK can create or revoke a share.
+    match /noteShares/{shareId} {
+      allow read: if isAuthenticated()
+        && resource.data.revokedAt == null
+        && (isOwner(resource.data.ownerUid) || isOwner(resource.data.recipientUid));
+
+      allow write: if false;
     }
 
     // ── Default deny ───────────────────────────────────────────────────────
