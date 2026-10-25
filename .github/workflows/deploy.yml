@@ -12,9 +12,11 @@ concurrency:
 jobs:
   # Frontend deploys are handled by Vercel's own GitHub integration — connect
   # the repo in the Vercel dashboard and it deploys automatically on push.
-  # This job only handles what Firebase itself owns: Firestore security rules.
-  deploy-firestore-rules:
-    name: Deploy Firestore Rules
+  # This job handles what Firebase itself owns: Firestore indexes and security
+  # rules. Indexes deploy first so the shared-note queries work as soon as the
+  # new rules allow them.
+  deploy-firestore:
+    name: Deploy Firestore Indexes & Rules
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -24,6 +26,142 @@ jobs:
         run: |
           echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 }}" | base64 --decode > /tmp/gcp-sa.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json" >> $GITHUB_ENV
+
+      - name: Deploy Firestore indexes
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          export ACCESS_TOKEN
+
+          python <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          from pathlib import Path
+          from urllib import error, request
+
+          project_id = os.environ["FIREBASE_PROJECT_ID"]
+          access_token = os.environ["ACCESS_TOKEN"]
+          base_url = (
+              "https://firestore.googleapis.com/v1/"
+              f"projects/{project_id}/databases/(default)"
+          )
+          config = json.loads(
+              Path("firebase/firestore.indexes.json").read_text(encoding="utf-8")
+          )
+
+          headers = {
+              "Authorization": "Bearer " + access_token,
+              "Content-Type": "application/json; charset=utf-8",
+          }
+
+          def call(method: str, url: str, payload: dict | None = None) -> dict:
+              req = request.Request(
+                  url=url,
+                  data=json.dumps(payload).encode("utf-8") if payload is not None else None,
+                  headers=headers,
+                  method=method,
+              )
+              try:
+                  with request.urlopen(req) as response:
+                      body = response.read().decode("utf-8")
+                      return json.loads(body) if body else {}
+              except error.HTTPError as http_error:
+                  print(f"{method} {url} failed with HTTP {http_error.code}", file=sys.stderr)
+                  print(http_error.read().decode("utf-8"), file=sys.stderr)
+                  raise
+
+          def field_key(field: dict) -> tuple:
+              return (
+                  field.get("fieldPath"),
+                  field.get("order"),
+                  field.get("arrayConfig"),
+              )
+
+          def index_key(index: dict) -> tuple:
+              fields = list(index.get("fields", []))
+              # The API appends __name__ to composite indexes; the CLI config
+              # format omits it, so drop it before comparing.
+              if fields and fields[-1].get("fieldPath") == "__name__":
+                  fields = fields[:-1]
+              return (
+                  index.get("queryScope", "COLLECTION"),
+                  tuple(field_key(field) for field in fields),
+              )
+
+          def wait_for_operation(operation_name: str, timeout: int = 900) -> None:
+              deadline = time.time() + timeout
+              url = f"https://firestore.googleapis.com/v1/{operation_name}"
+
+              while True:
+                  operation = call("GET", url)
+                  if operation.get("done"):
+                      if "error" in operation:
+                          print(json.dumps(operation["error"], indent=2), file=sys.stderr)
+                          raise SystemExit("Index build failed")
+                      return
+
+                  if time.time() > deadline:
+                      raise SystemExit(f"Timed out waiting for {operation_name}")
+                  time.sleep(5)
+
+          def wait_for_index(index_name: str, timeout: int = 900) -> None:
+              deadline = time.time() + timeout
+              url = f"https://firestore.googleapis.com/v1/{index_name}"
+
+              while True:
+                  index = call("GET", url)
+                  state = index.get("state", "READY")
+                  if state == "READY":
+                      return
+                  if state == "NEEDS_REPAIR":
+                      raise SystemExit(f"Index {index_name} needs repair")
+                  if time.time() > deadline:
+                      raise SystemExit(f"Timed out waiting for index {index_name}")
+                  time.sleep(5)
+
+          by_collection: dict[str, list[dict]] = {}
+          for index in config.get("indexes", []):
+              by_collection.setdefault(index["collectionGroup"], []).append(index)
+
+          for collection_group, wanted_indexes in by_collection.items():
+              url = f"{base_url}/collectionGroups/{collection_group}/indexes"
+              existing = call("GET", url).get("indexes", [])
+              existing_by_key = {index_key(index): index for index in existing}
+
+              for wanted in wanted_indexes:
+                  payload = {
+                      "queryScope": wanted.get("queryScope", "COLLECTION"),
+                      "fields": wanted["fields"],
+                  }
+                  key = index_key(payload)
+                  current = existing_by_key.get(key)
+
+                  if current is not None:
+                      print(f"Index already exists on {collection_group}: {key}")
+                      state = current.get("state", "READY")
+                      if state == "CREATING":
+                          wait_for_index(current["name"])
+                      elif state == "NEEDS_REPAIR":
+                          raise SystemExit(f"Index {current['name']} needs repair")
+                      continue
+
+                  print(f"Creating index on {collection_group}: {key}")
+                  try:
+                      operation = call("POST", url, payload)
+                  except error.HTTPError as http_error:
+                      # Another run may have created the same index first.
+                      if http_error.code == 409:
+                          print(f"Index already exists on {collection_group}: {key}")
+                          continue
+                      raise
+
+                  wait_for_operation(operation["name"])
+                  print(f"Created index on {collection_group}: {key}")
+          PY
 
       - name: Deploy Firestore rules
         env:
