@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { where } from 'firebase/firestore'
 import { Users } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { useCollection } from '@/hooks/useFirestore'
 import { getNotesCollection, getNoteSharesCollection } from '@/lib/firebase/firestore'
@@ -11,7 +12,8 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { SharedNoteItem } from '@/features/notes/components/SharedNoteItem'
 import { SharedNoteView } from '@/features/notes/components/SharedNoteView'
-import type { Note } from '@/types/firestore'
+import { setNoteReviewed } from '@/features/notes/actions/sharing.actions'
+import type { Note, NoteShare } from '@/types/firestore'
 
 export function SharedNotesList() {
   const { user } = useAuth()
@@ -28,13 +30,12 @@ export function SharedNotesList() {
   )
 
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [reviewingNoteId, setReviewingNoteId] = useState<string | null>(null)
 
-  const ownerNames = useMemo(() => {
-    const names = new Map<string, string>()
-    for (const share of sharesQuery.data) {
-      if (share.ownerDisplayName) names.set(share.noteId, share.ownerDisplayName)
-    }
-    return names
+  const sharesByNoteId = useMemo(() => {
+    const shares = new Map<string, NoteShare>()
+    for (const share of sharesQuery.data) shares.set(share.noteId, share)
+    return shares
   }, [sharesQuery.data])
 
   if (notesQuery.loading || sharesQuery.loading) return <LoadingSpinner />
@@ -68,10 +69,23 @@ export function SharedNotesList() {
   const selectedUnavailable =
     selectedNote !== null && (!liveSelectedNote || liveSelectedNote.deletedAt != null)
 
+  const selectedShare = selectedNote ? sharesByNoteId.get(selectedNote.id) : undefined
   const selectedOwnerName =
     selectedNote && !selectedUnavailable
-      ? (ownerNames.get(selectedNote.id) ?? 'the note owner')
+      ? (selectedShare?.ownerDisplayName ?? 'the note owner')
       : undefined
+
+  const onToggleReviewed = async (noteId: string, reviewed: boolean) => {
+    setReviewingNoteId(noteId)
+    const result = await setNoteReviewed({ noteId, reviewed: !reviewed })
+    setReviewingNoteId(null)
+
+    if (result.success) {
+      toast.success(reviewed ? 'Marked as not reviewed' : 'Marked as reviewed')
+    } else {
+      toast.error(result.error ?? 'Failed to update review status')
+    }
+  }
 
   return (
     <>
@@ -83,14 +97,22 @@ export function SharedNotesList() {
         />
       ) : (
         <ul className="space-y-2">
-          {notes.map((note) => (
-            <SharedNoteItem
-              key={note.id}
-              note={note}
-              ownerDisplayName={ownerNames.get(note.id) ?? 'the note owner'}
-              onView={() => setSelectedNote(note)}
-            />
-          ))}
+          {notes.map((note) => {
+            const share = sharesByNoteId.get(note.id)
+            const reviewed = share?.reviewedAt != null
+
+            return (
+              <SharedNoteItem
+                key={note.id}
+                note={note}
+                ownerDisplayName={share?.ownerDisplayName ?? 'the note owner'}
+                reviewed={reviewed}
+                reviewPending={reviewingNoteId === note.id}
+                onToggleReviewed={() => onToggleReviewed(note.id, reviewed)}
+                onView={() => setSelectedNote(note)}
+              />
+            )
+          })}
         </ul>
       )}
 
@@ -98,6 +120,13 @@ export function SharedNotesList() {
         note={selectedUnavailable ? null : selectedNote}
         unavailable={selectedUnavailable}
         ownerDisplayName={selectedOwnerName}
+        reviewed={selectedShare?.reviewedAt != null}
+        reviewPending={selectedNote !== null && reviewingNoteId === selectedNote.id}
+        onToggleReviewed={
+          selectedNote && selectedShare
+            ? () => onToggleReviewed(selectedNote.id, selectedShare.reviewedAt != null)
+            : undefined
+        }
         onClose={() => setSelectedNote(null)}
       />
     </>

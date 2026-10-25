@@ -47,7 +47,24 @@ export interface NoteShare {
   updatedAt: Timestamp
   /** Set when share is revoked. Absent or null means active. */
   revokedAt?: Timestamp | null
+  /** Set when the recipient marks the note as reviewed. Absent or null means not reviewed. */
+  reviewedAt?: Timestamp | null
   _schemaVersion: 1
 }
 
-export type CreateNoteShareInput = Omit<NoteShare, 'id' | 'createdAt' | 'updatedAt' | 'revokedAt'>
+export type CreateNoteShareInput = Omit<
+  NoteShare,
+  'id' | 'createdAt' | 'updatedAt' | 'revokedAt' | 'reviewedAt'
+>
+
+export interface NoteComment {
+  id: string
+  noteId: string
+  authorUid: string
+  /** Snapshot of the author's display name at comment time. */
+  authorDisplayName: string | null
+  body: string
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  _schemaVersion: 1
+}

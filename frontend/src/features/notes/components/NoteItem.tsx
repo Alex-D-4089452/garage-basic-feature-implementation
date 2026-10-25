@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { deleteNote, updateNote } from '@/features/notes/actions/notes.actions'
+import { NoteCommentsDialog } from '@/features/notes/components/NoteCommentsDialog'
 import { ShareNoteDialog } from '@/features/notes/components/ShareNoteDialog'
 import type { Note } from '@/types/firestore'
 
@@ -33,6 +34,7 @@ export function NoteItem({ note }: { note: Note }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [commenting, setCommenting] = useState(false)
 
   const {
     register,
@@ -154,6 +156,14 @@ export function NoteItem({ note }: { note: Note }) {
           </button>
           <button
             type="button"
+            onClick={() => setCommenting(true)}
+            aria-label={`Comments for ${note.title}`}
+            className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Comments
+          </button>
+          <button
+            type="button"
             onClick={startEditing}
             aria-label={`Edit ${note.title}`}
             className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
@@ -194,6 +204,10 @@ export function NoteItem({ note }: { note: Note }) {
       )}
 
       {sharing && <ShareNoteDialog note={note} open={sharing} onClose={() => setSharing(false)} />}
+
+      {commenting && (
+        <NoteCommentsDialog note={note} open={commenting} onClose={() => setCommenting(false)} />
+      )}
     </li>
   )
 }

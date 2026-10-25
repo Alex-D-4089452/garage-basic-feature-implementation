@@ -33,6 +33,19 @@ service cloud.firestore {
       return resource == null || !('deletedAt' in resource.data) || resource.data.deletedAt == null;
     }
 
+    // Comment reads follow the parent note: it must exist, be active, and the
+    // caller must be its owner or an active recipient. Firestore caches repeated
+    // get() calls to the same document within a single request.
+    function canReadNote(noteId) {
+      let notePath = /databases/$(database)/documents/notes/$(noteId);
+      return isAuthenticated()
+        && exists(notePath)
+        && (!('deletedAt' in get(notePath).data) || get(notePath).data.deletedAt == null)
+        && (isOwner(get(notePath).data.uid)
+            || ('sharedWithUids' in get(notePath).data
+                && request.auth.uid in get(notePath).data.sharedWithUids));
+    }
+
     // ── Collections ────────────────────────────────────────────────────────
 
     // users/{userId}
@@ -93,6 +106,15 @@ service cloud.firestore {
         && resource.data.revokedAt == null
         && (isOwner(resource.data.ownerUid) || isOwner(resource.data.recipientUid));
 
+      allow write: if false;
+    }
+
+    // noteComments/{commentId}
+    // Comments are readable by the note owner and active recipients. Clients
+    // can never write comments — only the addNoteComment Server Action using
+    // the Admin SDK can create them.
+    match /noteComments/{commentId} {
+      allow read: if canReadNote(resource.data.noteId);
       allow write: if false;
     }
 

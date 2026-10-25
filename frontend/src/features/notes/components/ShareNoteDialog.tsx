@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/shared/ErrorState'
 import { useAuth } from '@/hooks/useAuth'
 import { useCollection } from '@/hooks/useFirestore'
 import { getNoteSharesCollection } from '@/lib/firebase/firestore'
+import { formatDatetime } from '@/lib/utils'
 import { shareNote, unshareNote } from '@/features/notes/actions/sharing.actions'
 import { MAX_SHARED_USERS } from '@/features/notes/constants'
 import type { Note } from '@/types/firestore'
@@ -195,6 +196,11 @@ export function ShareNoteDialog({ note, open, onClose }: ShareNoteDialogProps) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{share.recipientEmail}</p>
                   <p className="text-xs text-zinc-500">View only</p>
+                  <p className="text-xs text-zinc-500">
+                    {share.reviewedAt
+                      ? `Reviewed ${formatDatetime(share.reviewedAt.toDate())}`
+                      : 'Not reviewed yet'}
+                  </p>
                 </div>
                 <button
                   type="button"

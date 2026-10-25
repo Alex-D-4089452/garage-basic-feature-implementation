@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { Timestamp } from 'firebase/firestore'
 import { SharedNotesList } from '@/features/notes/components/SharedNotesList'
 import { useCollection } from '@/hooks/useFirestore'
-import type { Note, NoteShare } from '@/types/firestore'
+import type { Note, NoteComment, NoteShare } from '@/types/firestore'
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'recipient-1' } }),
@@ -17,6 +17,7 @@ vi.mock('@/hooks/useFirestore', () => ({
 vi.mock('@/lib/firebase/firestore', () => ({
   getNotesCollection: () => ({ path: 'notes' }),
   getNoteSharesCollection: () => ({ path: 'noteShares' }),
+  getNoteCommentsCollection: () => ({ path: 'noteComments' }),
 }))
 
 const baseNote: Note = {
@@ -50,7 +51,11 @@ interface QueryState<T> {
   retry?: () => void
 }
 
-function mockQueries(notes: QueryState<Note>, shares: QueryState<NoteShare> = { data: [share] }) {
+function mockQueries(
+  notes: QueryState<Note>,
+  shares: QueryState<NoteShare> = { data: [share] },
+  comments: QueryState<NoteComment> = { data: [] }
+) {
   const notesResult = {
     data: notes.data,
     loading: notes.loading ?? false,
@@ -63,13 +68,21 @@ function mockQueries(notes: QueryState<Note>, shares: QueryState<NoteShare> = { 
     error: shares.error ?? null,
     retry: shares.retry ?? vi.fn(),
   }
+  const commentsResult = {
+    data: comments.data,
+    loading: comments.loading ?? false,
+    error: comments.error ?? null,
+    retry: comments.retry ?? vi.fn(),
+  }
 
   vi.mocked(useCollection).mockImplementation((collectionRef) => {
     const path = (collectionRef as unknown as { path: string }).path
-    return path === 'notes' ? notesResult : sharesResult
+    if (path === 'notes') return notesResult
+    if (path === 'noteComments') return commentsResult
+    return sharesResult
   })
 
-  return { notesResult, sharesResult }
+  return { notesResult, sharesResult, commentsResult }
 }
 
 beforeEach(() => {

@@ -6,6 +6,7 @@ import { requireAuth } from '@/actions/auth.actions'
 import { Timestamp } from 'firebase-admin/firestore'
 import type { ActionResult } from '@/types'
 import { MAX_SHARED_USERS } from '@/features/notes/constants'
+import { getUserDisplayName } from '@/features/notes/server/userDisplayName'
 
 const shareNoteSchema = z.object({
   noteId: z.string().min(1).max(128),
@@ -23,6 +24,11 @@ const unshareNoteSchema = z.object({
   recipientUid: z.string().min(1).max(128),
 })
 
+const setNoteReviewedSchema = z.object({
+  noteId: z.string().min(1).max(128),
+  reviewed: z.boolean(),
+})
+
 function isUserNotFoundError(error: unknown) {
   return (
     typeof error === 'object' &&
@@ -35,20 +41,6 @@ function isUserNotFoundError(error: unknown) {
 function readSharedWithUids(data: Record<string, unknown> | undefined): string[] {
   if (!Array.isArray(data?.sharedWithUids)) return []
   return data.sharedWithUids.filter((uid): uid is string => typeof uid === 'string')
-}
-
-async function getOwnerDisplayName(uid: string, session: { name?: string; email?: string }) {
-  try {
-    const snap = await adminDb.collection('users').doc(uid).get()
-    const displayName = snap.data()?.displayName
-    if (typeof displayName === 'string' && displayName.trim()) {
-      return displayName.trim()
-    }
-  } catch {
-    // A missing profile must not block sharing — fall back to the auth token.
-  }
-
-  return session.name?.trim() || session.email || null
 }
 
 /**
@@ -85,7 +77,7 @@ export async function shareNote(
   }
 
   const recipientEmail = (recipient.email ?? email).toLowerCase()
-  const ownerDisplayName = await getOwnerDisplayName(session.uid, session)
+  const ownerDisplayName = await getUserDisplayName(session.uid, session)
 
   const noteRef = adminDb.collection('notes').doc(noteId)
   const shareRef = adminDb.collection('noteShares').doc(`${noteId}_${recipient.uid}`)
@@ -134,6 +126,8 @@ export async function shareNote(
         createdAt: existingShare?.createdAt ?? now,
         updatedAt: now,
         revokedAt: null,
+        // Re-sharing a previously revoked note starts the review state fresh.
+        reviewedAt: null,
         _schemaVersion: 1,
       })
 
@@ -196,5 +190,68 @@ export async function unshareNote(input: unknown): Promise<ActionResult> {
     })
   } catch {
     return { success: false, error: 'Failed to revoke share' }
+  }
+}
+
+/**
+ * Mark a shared note as reviewed (or clear the review) for the signed-in
+ * recipient. The note's access list and the share record are both checked so a
+ * revoked recipient cannot write review state.
+ */
+export async function setNoteReviewed(input: unknown): Promise<ActionResult> {
+  const session = await requireAuth()
+
+  const parsed = setNoteReviewedSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+  }
+
+  const { noteId, reviewed } = parsed.data
+  const noteRef = adminDb.collection('notes').doc(noteId)
+  const shareRef = adminDb.collection('noteShares').doc(`${noteId}_${session.uid}`)
+
+  try {
+    return await adminDb.runTransaction<ActionResult>(async (transaction) => {
+      const noteSnap = await transaction.get(noteRef)
+      if (!noteSnap.exists) {
+        return { success: false, error: 'Note not found' }
+      }
+
+      const note = noteSnap.data()
+      const sharedWithUids = readSharedWithUids(note)
+      if (
+        !note ||
+        note.deletedAt != null ||
+        note.uid === session.uid ||
+        !sharedWithUids.includes(session.uid)
+      ) {
+        return { success: false, error: 'Note not found' }
+      }
+
+      const shareSnap = await transaction.get(shareRef)
+      if (!shareSnap.exists) {
+        return { success: false, error: 'Share not found' }
+      }
+
+      const share = shareSnap.data()
+      if (
+        !share ||
+        share.ownerUid !== note.uid ||
+        share.recipientUid !== session.uid ||
+        share.revokedAt != null
+      ) {
+        return { success: false, error: 'Share not found' }
+      }
+
+      const now = Timestamp.now()
+      transaction.update(shareRef, {
+        reviewedAt: reviewed ? now : null,
+        updatedAt: now,
+      })
+
+      return { success: true }
+    })
+  } catch {
+    return { success: false, error: 'Failed to update review status' }
   }
 }

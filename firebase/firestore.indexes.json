@@ -24,6 +24,14 @@
         { "fieldPath": "recipientUid", "order": "ASCENDING" },
         { "fieldPath": "revokedAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "noteComments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "noteId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
