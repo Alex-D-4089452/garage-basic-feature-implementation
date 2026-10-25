@@ -16,6 +16,7 @@ vi.mock('@/hooks/useAuth', () => ({
 
 vi.mock('@/lib/firebase/firestore', () => ({
   getNotesCollection: () => ({}),
+  getNoteSharesCollection: () => ({}),
 }))
 
 vi.mock('@/features/notes/actions/notes.actions', () => ({
@@ -80,13 +81,21 @@ describe('NotesList', () => {
 
   it('shows a retryable error state when the query fails', async () => {
     const user = userEvent.setup()
-    const retry = vi.fn()
-    vi.mocked(useCollection).mockReturnValue({
-      data: [],
-      loading: false,
-      error: new Error('permission-denied'),
-      retry,
-    })
+    const notesRetry = vi.fn()
+    const sharesRetry = vi.fn()
+    vi.mocked(useCollection)
+      .mockReturnValueOnce({
+        data: [],
+        loading: false,
+        error: new Error('permission-denied'),
+        retry: notesRetry,
+      })
+      .mockReturnValueOnce({
+        data: [],
+        loading: false,
+        error: new Error('permission-denied'),
+        retry: sharesRetry,
+      })
 
     render(<NotesList />)
 
@@ -94,6 +103,7 @@ describe('NotesList', () => {
     expect(screen.getByText('permission-denied')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(retry).toHaveBeenCalledTimes(1)
+    expect(notesRetry).toHaveBeenCalledTimes(1)
+    expect(sharesRetry).toHaveBeenCalledTimes(1)
   })
 })
