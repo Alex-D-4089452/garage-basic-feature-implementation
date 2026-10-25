@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { deleteNote, updateNote } from '@/features/notes/actions/notes.actions'
 import { NoteCommentsDialog } from '@/features/notes/components/NoteCommentsDialog'
@@ -29,7 +30,7 @@ const secondaryButtonClassName =
 const dangerButtonClassName =
   'rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
 
-export function NoteItem({ note }: { note: Note }) {
+export function NoteItem({ note, reviewed }: { note: Note; reviewed?: boolean }) {
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -146,6 +147,16 @@ export function NoteItem({ note }: { note: Note }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          {reviewed && (
+            <span
+              className="flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+              title="Reviewed by recipient"
+            >
+              <Check className="h-4 w-4" aria-hidden="true" data-testid="reviewed-check-icon" />
+              Reviewed
+            </span>
+          )}
+
           <button
             type="button"
             onClick={() => setSharing(true)}
