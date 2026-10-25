@@ -12,6 +12,23 @@ vi.mock('@/features/notes/actions/notes.actions', () => ({
   deleteNote: vi.fn(),
 }))
 
+vi.mock('@/features/notes/actions/sharing.actions', () => ({
+  shareNote: vi.fn(),
+  unshareNote: vi.fn(),
+}))
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { uid: 'user-1' } }),
+}))
+
+vi.mock('@/hooks/useFirestore', () => ({
+  useCollection: () => ({ data: [], loading: false, error: null, retry: vi.fn() }),
+}))
+
+vi.mock('@/lib/firebase/firestore', () => ({
+  getNoteSharesCollection: () => ({}),
+}))
+
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
@@ -119,6 +136,25 @@ describe('NoteItem', () => {
 
     expect(screen.queryByText('Delete this note?')).not.toBeInTheDocument()
     expect(deleteNote).not.toHaveBeenCalled()
+  })
+
+  it('shows the number of people a note is shared with', () => {
+    render(<NoteItem note={{ ...note, sharedWithUids: ['user-2', 'user-3'] }} />)
+
+    expect(screen.getByText('Shared with 2 people')).toBeInTheDocument()
+  })
+
+  it('opens the share dialog from the note actions', async () => {
+    const user = userEvent.setup()
+    render(<NoteItem note={note} />)
+
+    await user.click(screen.getByRole('button', { name: 'Share Original title' }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Share note')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close dialog' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows an error when the delete fails', async () => {

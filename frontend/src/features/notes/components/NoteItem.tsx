@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { deleteNote, updateNote } from '@/features/notes/actions/notes.actions'
+import { ShareNoteDialog } from '@/features/notes/components/ShareNoteDialog'
 import type { Note } from '@/types/firestore'
 
 const editNoteFormSchema = z.object({
@@ -31,6 +32,7 @@ export function NoteItem({ note }: { note: Note }) {
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   const {
     register,
@@ -130,12 +132,26 @@ export function NoteItem({ note }: { note: Note }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <h3 className="font-medium break-words">{note.title}</h3>
+          {note.sharedWithUids && note.sharedWithUids.length > 0 && (
+            <p className="text-xs text-zinc-500">
+              Shared with {note.sharedWithUids.length}{' '}
+              {note.sharedWithUids.length === 1 ? 'person' : 'people'}
+            </p>
+          )}
           {note.body && (
             <p className="text-sm break-words whitespace-pre-wrap text-zinc-500">{note.body}</p>
           )}
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            aria-label={`Share ${note.title}`}
+            className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Share
+          </button>
           <button
             type="button"
             onClick={startEditing}
@@ -176,6 +192,8 @@ export function NoteItem({ note }: { note: Note }) {
           </button>
         </div>
       )}
+
+      {sharing && <ShareNoteDialog note={note} open={sharing} onClose={() => setSharing(false)} />}
     </li>
   )
 }
