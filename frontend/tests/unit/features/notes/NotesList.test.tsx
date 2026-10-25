@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Timestamp } from 'firebase/firestore'
 import { NotesList } from '@/features/notes/components/NotesList'
 import { useCollection } from '@/hooks/useFirestore'
@@ -15,6 +16,7 @@ vi.mock('@/hooks/useAuth', () => ({
 
 vi.mock('@/lib/firebase/firestore', () => ({
   getNotesCollection: () => ({}),
+  getNoteSharesCollection: () => ({}),
 }))
 
 vi.mock('@/features/notes/actions/notes.actions', () => ({
@@ -46,8 +48,8 @@ const deletedNote: Note = {
   deletedAt: Timestamp.fromMillis(1),
 }
 
-function mockCollection(data: Note[], loading = false) {
-  vi.mocked(useCollection).mockReturnValue({ data, loading, error: null })
+function mockCollection(data: Note[], loading = false, error: Error | null = null) {
+  vi.mocked(useCollection).mockReturnValue({ data, loading, error, retry: vi.fn() })
 }
 
 beforeEach(() => {
@@ -75,5 +77,33 @@ describe('NotesList', () => {
     render(<NotesList />)
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+  })
+
+  it('shows a retryable error state when the query fails', async () => {
+    const user = userEvent.setup()
+    const notesRetry = vi.fn()
+    const sharesRetry = vi.fn()
+    vi.mocked(useCollection)
+      .mockReturnValueOnce({
+        data: [],
+        loading: false,
+        error: new Error('permission-denied'),
+        retry: notesRetry,
+      })
+      .mockReturnValueOnce({
+        data: [],
+        loading: false,
+        error: new Error('permission-denied'),
+        retry: sharesRetry,
+      })
+
+    render(<NotesList />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load your notes")
+    expect(screen.getByText('permission-denied')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(notesRetry).toHaveBeenCalledTimes(1)
+    expect(sharesRetry).toHaveBeenCalledTimes(1)
   })
 })
